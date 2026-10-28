@@ -1,0 +1,81 @@
+
+# =========================
+# Environment & Secrets
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+.aws/
+
+# =========================
+# Go
+# =========================
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+vendor/
+
+# Go workspace
+go.work
+go.work.sum
+
+# =========================
+# IDE & Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Temporary files
+# =========================
+tmp/
+temp/
+.cache/
+
+# =========================
+# Docker & Database
+# =========================
+# Never commit local database volumes or dumps
+postgres_data/
+redis_data/
+*.sql.gz
+*.dump
+*.backup
+
+# =========================
+# Build outputs
+# =========================
+/bin/
+/dist/
+/build/
+
+# =========================
+# Test artifacts
+# =========================
+coverage/
+test-results/
