@@ -20,19 +20,20 @@ type Dependencies struct {
 	Redis                 *redis.Client
 	AuthMiddleware        *middleware.CognitoMiddleware
 	CognitoProfileService *service.CognitoProfileService
+	CognitoAuthService    *service.CognitoAuthService
 }
 
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 
-	// Liveness check: memastikan HTTP server berjalan.
+	// Health check: memastikan HTTP server berjalan.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{
 			"status": "ok",
 		})
 	})
 
-	// Readiness check: memastikan database dan Redis siap.
+	// Readiness check: memastikan PostgreSQL dan Redis siap.
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
@@ -77,15 +78,24 @@ func New(deps Dependencies) http.Handler {
 		})
 	})
 
-	// Siapkan handler.
+	// Endpoint autentikasi publik.
+	// Tidak memerlukan access token.
+	authHandler := handlers.NewAuthHandler(deps.CognitoAuthService)
+
+	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
+	mux.HandleFunc("POST /api/auth/confirm", authHandler.Confirm)
+	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	// Siapkan handler aplikasi.
 	meHandler := handlers.NewMeHandler(
 		deps.DB,
 		deps.CognitoProfileService,
 	)
 
 	organizationHandler := handlers.NewOrganizationHandler(deps.DB)
+	invitationHandler := handlers.NewInvitationHandler(deps.DB)
 
-	// Semua endpoint privat harus melewati middleware Cognito.
+	// Jika middleware Cognito tidak tersedia,
+	// endpoint privat mengembalikan 503.
 	if deps.AuthMiddleware == nil {
 		unavailable := func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -95,15 +105,31 @@ func New(deps Dependencies) http.Handler {
 
 		mux.HandleFunc("GET /api/me", unavailable)
 		mux.HandleFunc("POST /api/organizations", unavailable)
+		mux.HandleFunc("GET /api/organizations", unavailable)
+
+		mux.HandleFunc(
+			"POST /api/organizations/{organizationID}/invitations",
+			unavailable,
+		)
+		mux.HandleFunc(
+			"GET /api/organizations/{organizationID}/invitations",
+			unavailable,
+		)
+		mux.HandleFunc(
+			"POST /api/invitations/accept",
+			unavailable,
+		)
 
 		return mux
 	}
 
+	// Endpoint profil user.
 	mux.Handle(
 		"GET /api/me",
 		deps.AuthMiddleware.RequireAuth(meHandler),
 	)
 
+	// Endpoint organisasi.
 	mux.Handle(
 		"POST /api/organizations",
 		deps.AuthMiddleware.RequireAuth(
@@ -112,11 +138,35 @@ func New(deps Dependencies) http.Handler {
 	)
 
 	mux.Handle(
-	"GET /api/organizations",
-	deps.AuthMiddleware.RequireAuth(
-		http.HandlerFunc(organizationHandler.List),
-	),
-)
+		"GET /api/organizations",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(organizationHandler.List),
+		),
+	)
+
+	// Membuat undangan anggota organisasi.
+	mux.Handle(
+		"POST /api/organizations/{organizationID}/invitations",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(invitationHandler.Create),
+		),
+	)
+
+	// Melihat daftar undangan organisasi.
+	mux.Handle(
+		"GET /api/organizations/{organizationID}/invitations",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(invitationHandler.List),
+		),
+	)
+
+	// Menerima undangan organisasi.
+	mux.Handle(
+		"POST /api/invitations/accept",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(invitationHandler.Accept),
+		),
+	)
 
 	return mux
 }

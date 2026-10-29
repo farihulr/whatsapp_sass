@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -17,12 +16,14 @@ import (
 	"whatsapp-saas/internal/router"
 	"whatsapp-saas/internal/service"
 
+	redisClient "whatsapp-saas/internal/redis"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	cognito "github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
-	redisClient "whatsapp-saas/internal/redis"
 )
 
 func main() {
+	// Load configuration.
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal("Gagal memuat konfigurasi: ", err)
@@ -65,7 +66,12 @@ func main() {
 
 	log.Println("Redis connected")
 
-	// Initialize token-validation middleware.
+	// Initialize Cognito API client.
+	cognitoClient := cognito.NewFromConfig(aws.Config{
+		Region: cfg.CognitoRegion,
+	})
+
+	// Initialize Cognito token-validation middleware.
 	authMiddleware, err := middleware.NewCognitoMiddleware(
 		ctx,
 		cfg.CognitoRegion,
@@ -76,23 +82,27 @@ func main() {
 		log.Fatal("Gagal menginisialisasi Cognito middleware: ", err)
 	}
 
-	// Initialize Cognito API client.
-	cognitoClient := cognito.NewFromConfig(aws.Config{
-		Region: cfg.CognitoRegion,
-	})
-
+	// Initialize Cognito profile service.
 	cognitoProfileService := service.NewCognitoProfileService(
 		cognitoClient,
 	)
 
-	log.Println("Cognito authentication initialized")
+	// Initialize Cognito registration and email-confirmation service.
+	cognitoAuthService := service.NewCognitoAuthService(
+		cognitoClient,
+		cfg.CognitoAppClientID,
+		cfg.CognitoAppClientSecret,
+	)
+
+	log.Println("Cognito authentication and registration initialized")
 
 	// Build HTTP router.
 	handler := router.New(router.Dependencies{
-		DB:                   db,
-		Redis:                rdb,
-		AuthMiddleware:       authMiddleware,
+		DB:                    db,
+		Redis:                 rdb,
+		AuthMiddleware:        authMiddleware,
 		CognitoProfileService: cognitoProfileService,
+		CognitoAuthService:    cognitoAuthService,
 	})
 
 	server := &http.Server{

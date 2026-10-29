@@ -1,4 +1,3 @@
-
 package config
 
 import (
@@ -10,20 +9,18 @@ import (
 )
 
 type Config struct {
-	AppPort       string
-	DatabaseURL   string
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
-
-	// AWS Cognito
-	CognitoRegion     string
-	CognitoUserPoolID string
-	CognitoAppClientID string
+	AppPort                string
+	DatabaseURL            string
+	RedisAddr              string
+	RedisPassword          string
+	RedisDB                int
+	CognitoRegion          string
+	CognitoUserPoolID      string
+	CognitoAppClientID     string
+	CognitoAppClientSecret string
 }
 
 func Load() (*Config, error) {
-	// .env opsional jika environment variables sudah tersedia.
 	if err := godotenv.Load(); err != nil {
 		fmt.Println("File .env tidak ditemukan; menggunakan environment variables")
 	}
@@ -34,14 +31,15 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		AppPort:           getEnv("APP_PORT", "8080"),
-		DatabaseURL:       os.Getenv("DATABASE_URL"),
-		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
-		RedisPassword:     os.Getenv("REDIS_PASSWORD"),
-		RedisDB:           redisDB,
-		CognitoRegion:     os.Getenv("AWS_REGION"),
-		CognitoUserPoolID: os.Getenv("COGNITO_USER_POOL_ID"),
-		CognitoAppClientID: os.Getenv("COGNITO_CLIENT_ID"),
+		AppPort:                getEnv("APP_PORT", "8080"),
+		DatabaseURL:            os.Getenv("DATABASE_URL"),
+		RedisAddr:              getEnv("REDIS_ADDR", "localhost:6379"),
+		RedisPassword:          os.Getenv("REDIS_PASSWORD"),
+		RedisDB:                redisDB,
+		CognitoRegion:          getEnv("AWS_REGION", ""),
+		CognitoUserPoolID:      getEnv("COGNITO_USER_POOL_ID", ""),
+		CognitoAppClientID:     getEnv("COGNITO_CLIENT_ID", ""),
+		CognitoAppClientSecret: os.Getenv("COGNITO_CLIENT_SECRET"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -57,7 +55,7 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.CognitoAppClientID == "" {
-		return nil, fmt.Errorf("COGNITO_APP_CLIENT_ID belum diatur")
+		return nil, fmt.Errorf("COGNITO_CLIENT_ID belum diatur")
 	}
 
 	return cfg, nil
