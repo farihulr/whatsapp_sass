@@ -15,10 +15,15 @@ type Config struct {
 	RedisAddr     string
 	RedisPassword string
 	RedisDB       int
+
+	// AWS Cognito
+	CognitoRegion     string
+	CognitoUserPoolID string
+	CognitoAppClientID string
 }
 
 func Load() (*Config, error) {
-	// .env bersifat opsional jika environment variables sudah tersedia.
+	// .env opsional jika environment variables sudah tersedia.
 	if err := godotenv.Load(); err != nil {
 		fmt.Println("File .env tidak ditemukan; menggunakan environment variables")
 	}
@@ -29,15 +34,30 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		AppPort:       getEnv("APP_PORT", "8080"),
-		DatabaseURL:   os.Getenv("DATABASE_URL"),
-		RedisAddr:     getEnv("REDIS_ADDR", "localhost:6379"),
-		RedisPassword: os.Getenv("REDIS_PASSWORD"),
-		RedisDB:       redisDB,
+		AppPort:           getEnv("APP_PORT", "8080"),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
+		RedisPassword:     os.Getenv("REDIS_PASSWORD"),
+		RedisDB:           redisDB,
+		CognitoRegion:     os.Getenv("AWS_REGION"),
+		CognitoUserPoolID: os.Getenv("COGNITO_USER_POOL_ID"),
+		CognitoAppClientID: os.Getenv("COGNITO_CLIENT_ID"),
 	}
 
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL belum diatur")
+	}
+
+	if cfg.CognitoRegion == "" {
+		return nil, fmt.Errorf("AWS_REGION belum diatur")
+	}
+
+	if cfg.CognitoUserPoolID == "" {
+		return nil, fmt.Errorf("COGNITO_USER_POOL_ID belum diatur")
+	}
+
+	if cfg.CognitoAppClientID == "" {
+		return nil, fmt.Errorf("COGNITO_APP_CLIENT_ID belum diatur")
 	}
 
 	return cfg, nil

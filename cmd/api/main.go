@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -14,11 +13,16 @@ import (
 
 	"whatsapp-saas/internal/config"
 	"whatsapp-saas/internal/database"
+	"whatsapp-saas/internal/middleware"
+	"whatsapp-saas/internal/router"
+	"whatsapp-saas/internal/service"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	cognito "github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 	redisClient "whatsapp-saas/internal/redis"
 )
 
 func main() {
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal("Gagal memuat konfigurasi: ", err)
@@ -26,7 +30,7 @@ func main() {
 
 	ctx := context.Background()
 
-	// Connect PostgreSQL using GORM
+	// Connect PostgreSQL.
 	db, err := database.NewPostgres(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal("Gagal terhubung ke PostgreSQL: ", err)
@@ -40,14 +44,14 @@ func main() {
 
 	log.Println("PostgreSQL connected")
 
-	// Automatically migrate GORM models
+	// Database migrations.
 	if err := database.AutoMigrate(db); err != nil {
 		log.Fatal("Gagal melakukan database migration: ", err)
 	}
 
 	log.Println("Database migration completed")
 
-	// Connect Redis
+	// Connect Redis.
 	rdb, err := redisClient.NewRedis(
 		ctx,
 		cfg.RedisAddr,
@@ -61,55 +65,43 @@ func main() {
 
 	log.Println("Redis connected")
 
-	// Setup HTTP router
-	mux := http.NewServeMux()
+	// Initialize token-validation middleware.
+	authMiddleware, err := middleware.NewCognitoMiddleware(
+		ctx,
+		cfg.CognitoRegion,
+		cfg.CognitoUserPoolID,
+		cfg.CognitoAppClientID,
+	)
+	if err != nil {
+		log.Fatal("Gagal menginisialisasi Cognito middleware: ", err)
+	}
 
-	// Liveness check
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status": "ok",
-		})
+	// Initialize Cognito API client.
+	cognitoClient := cognito.NewFromConfig(aws.Config{
+		Region: cfg.CognitoRegion,
 	})
 
-	// Readiness check
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		checkCtx, cancel := context.WithTimeout(
-			r.Context(),
-			2*time.Second,
-		)
-		defer cancel()
+	cognitoProfileService := service.NewCognitoProfileService(
+		cognitoClient,
+	)
 
-		if err := sqlDB.PingContext(checkCtx); err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-				"status": "not_ready",
-				"error":  "database unavailable",
-			})
-			return
-		}
+	log.Println("Cognito authentication initialized")
 
-		if err := rdb.Ping(checkCtx).Err(); err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-				"status": "not_ready",
-				"error":  "redis unavailable",
-			})
-			return
-		}
-
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status":   "ready",
-			"postgres": "connected",
-			"redis":    "connected",
-		})
+	// Build HTTP router.
+	handler := router.New(router.Dependencies{
+		DB:                   db,
+		Redis:                rdb,
+		AuthMiddleware:       authMiddleware,
+		CognitoProfileService: cognitoProfileService,
 	})
 
-	// Setup HTTP server
 	server := &http.Server{
 		Addr:              ":" + cfg.AppPort,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// Graceful shutdown
+	// Graceful shutdown.
 	serverCtx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -120,34 +112,23 @@ func main() {
 	go func() {
 		<-serverCtx.Done()
 
+		log.Println("Shutting down API server...")
+
 		shutdownCtx, cancel := context.WithTimeout(
 			context.Background(),
 			10*time.Second,
 		)
 		defer cancel()
 
-		log.Println("Shutting down API server...")
-
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Println("Shutdown error:", err)
 		}
 	}()
 
-	// Start HTTP server
 	log.Printf("API listening on :%s", cfg.AppPort)
 
 	if err := server.ListenAndServe(); err != nil &&
 		!errors.Is(err, http.ErrServerClosed) {
 		log.Fatal("HTTP server error: ", err)
-	}
-}
-
-// writeJSON writes a JSON HTTP response.
-func writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Println("Gagal menulis response JSON:", err)
 	}
 }
