@@ -1,4 +1,3 @@
-
 package database
 
 import (
@@ -18,6 +17,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.User{},
 		&models.Organization{},
 		&models.Membership{},
+		&models.Invitation{},
 	); err != nil {
 		return fmt.Errorf("gagal melakukan auto migration: %w", err)
 	}
