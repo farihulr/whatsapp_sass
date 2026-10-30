@@ -119,15 +119,15 @@ func New(deps Dependencies) http.Handler {
 				"error": "authentication service unavailable",
 			})
 		}
-		mux.HandleFunc(
-			"GET /api/organizations/{organizationID}/members/{userID}",
-			unavailable,
-		)
+
+		// User routes
 		mux.HandleFunc("GET /api/me", unavailable)
 
+		// Organization routes
 		mux.HandleFunc("POST /api/organizations", unavailable)
 		mux.HandleFunc("GET /api/organizations", unavailable)
 
+		// Invitation routes
 		mux.HandleFunc(
 			"POST /api/organizations/{organizationID}/invitations",
 			unavailable,
@@ -143,8 +143,19 @@ func New(deps Dependencies) http.Handler {
 			unavailable,
 		)
 
+		// Member routes
 		mux.HandleFunc(
 			"GET /api/organizations/{organizationID}/members",
+			unavailable,
+		)
+
+		mux.HandleFunc(
+			"GET /api/organizations/{organizationID}/members/{userID}",
+			unavailable,
+		)
+
+		mux.HandleFunc(
+			"PATCH /api/organizations/{organizationID}/members/{userID}",
 			unavailable,
 		)
 
@@ -207,6 +218,7 @@ func New(deps Dependencies) http.Handler {
 	// MEMBER ROUTES
 	// =====================================
 
+	// Melihat daftar anggota organisasi.
 	mux.Handle(
 		"GET /api/organizations/{organizationID}/members",
 		deps.AuthMiddleware.RequireAuth(
@@ -214,10 +226,19 @@ func New(deps Dependencies) http.Handler {
 		),
 	)
 
+	// Melihat detail anggota organisasi.
 	mux.Handle(
 		"GET /api/organizations/{organizationID}/members/{userID}",
 		deps.AuthMiddleware.RequireAuth(
 			http.HandlerFunc(memberHandler.Get),
+		),
+	)
+
+	// Mengubah role anggota organisasi.
+	mux.Handle(
+		"PATCH /api/organizations/{organizationID}/members/{userID}",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(memberHandler.UpdateRole),
 		),
 	)
 
