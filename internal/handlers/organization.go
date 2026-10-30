@@ -202,10 +202,6 @@ func (h *OrganizationHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	organizations := make([]map[string]any, 0, len(memberships))
 	for _, membership := range memberships {
-		if membership.Organization.ID == (user.ID) {
-			// Tidak perlu mengembalikan organisasi yang tidak valid.
-			continue
-		}
 
 		organizations = append(organizations, map[string]any{
 			"id":     membership.Organization.ID,
