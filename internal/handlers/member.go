@@ -394,3 +394,140 @@ func (h *MemberHandler) UpdateRole(w http.ResponseWriter, r *http.Request) {
 		"role":    newRole,
 	})
 }
+
+func (h *MemberHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	// Ambil Cognito subject.
+	sub, ok := middleware.CognitoSubject(ctx)
+	if !ok || sub == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{
+			"error": "unauthorized",
+		})
+		return
+	}
+
+	// Parse organization ID.
+	organizationID, err := uuid.Parse(r.PathValue("organizationID"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid organization ID",
+		})
+		return
+	}
+
+	// Parse target user ID.
+	targetUserID, err := uuid.Parse(r.PathValue("userID"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid user ID",
+		})
+		return
+	}
+
+	// Cari user yang sedang login.
+	var caller models.User
+
+	if err := h.DB.WithContext(ctx).
+		Where("cognito_sub = ?", sub).
+		First(&caller).Error; err != nil {
+
+		if err == gorm.ErrRecordNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "user profile not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "failed to find user",
+		})
+		return
+	}
+
+	// Tidak boleh menghapus dirinya sendiri.
+	if caller.ID == targetUserID {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "you cannot remove yourself",
+		})
+		return
+	}
+
+	// Transaction.
+	err = h.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var callerMembership models.Membership
+
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where(
+				"user_id = ? AND organization_id = ?",
+				caller.ID,
+				organizationID,
+			).
+			First(&callerMembership).Error; err != nil {
+			return err
+		}
+
+		// Hanya owner dan admin yang boleh menghapus anggota.
+		if callerMembership.Role != models.RoleOwner &&
+			callerMembership.Role != models.RoleAdmin {
+			return errForbidden
+		}
+
+		var targetMembership models.Membership
+
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where(
+				"user_id = ? AND organization_id = ?",
+				targetUserID,
+				organizationID,
+			).
+			First(&targetMembership).Error; err != nil {
+			return err
+		}
+
+		// Owner tidak boleh dihapus.
+		if targetMembership.Role == models.RoleOwner {
+			return errOwnerProtected
+		}
+
+		// Admin hanya boleh menghapus agent.
+		if callerMembership.Role == models.RoleAdmin &&
+			targetMembership.Role != models.RoleAgent {
+			return errForbidden
+		}
+
+		// Hapus membership saja, bukan user.
+		return tx.Delete(&targetMembership).Error
+	})
+
+	if err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "member not found",
+			})
+
+		case errors.Is(err, errForbidden):
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "you do not have permission to remove this member",
+			})
+
+		case errors.Is(err, errOwnerProtected):
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "owner cannot be removed",
+			})
+
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "failed to remove member",
+			})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "member removed successfully",
+		"user_id": targetUserID,
+	})
+}

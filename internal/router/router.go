@@ -159,6 +159,11 @@ func New(deps Dependencies) http.Handler {
 			unavailable,
 		)
 
+		mux.HandleFunc(
+			"DELETE /api/organizations/{organizationID}/members/{userID}",
+			unavailable,
+		)
+
 		return mux
 	}
 
@@ -239,6 +244,13 @@ func New(deps Dependencies) http.Handler {
 		"PATCH /api/organizations/{organizationID}/members/{userID}",
 		deps.AuthMiddleware.RequireAuth(
 			http.HandlerFunc(memberHandler.UpdateRole),
+		),
+	)
+
+	mux.Handle(
+		"DELETE /api/organizations/{organizationID}/members/{userID}",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(memberHandler.Delete),
 		),
 	)
 
