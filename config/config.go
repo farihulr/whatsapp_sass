@@ -9,15 +9,25 @@ import (
 )
 
 type Config struct {
-	AppPort                string
-	DatabaseURL            string
-	RedisAddr              string
-	RedisPassword          string
-	RedisDB                int
+	AppPort       string
+	DatabaseURL   string
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
+
+	// AWS Cognito
 	CognitoRegion          string
 	CognitoUserPoolID      string
 	CognitoAppClientID     string
 	CognitoAppClientSecret string
+
+	// WhatsApp Cloud API
+	WhatsAppPhoneNumberID      string
+	WhatsAppBusinessAccountID  string
+	WhatsAppAccessToken        string
+	WhatsAppAPIVersion         string
+	WhatsAppWebhookVerifyToken string
+	WhatsAppAppSecret          string
 }
 
 func Load() (*Config, error) {
@@ -31,17 +41,31 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		AppPort:                getEnv("APP_PORT", "8080"),
-		DatabaseURL:            os.Getenv("DATABASE_URL"),
-		RedisAddr:              getEnv("REDIS_ADDR", "localhost:6379"),
-		RedisPassword:          os.Getenv("REDIS_PASSWORD"),
-		RedisDB:                redisDB,
+		// Application
+		AppPort:     getEnv("APP_PORT", "8080"),
+		DatabaseURL: os.Getenv("DATABASE_URL"),
+
+		// Redis
+		RedisAddr:     getEnv("REDIS_ADDR", "localhost:6379"),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+		RedisDB:       redisDB,
+
+		// AWS Cognito
 		CognitoRegion:          getEnv("AWS_REGION", ""),
 		CognitoUserPoolID:      getEnv("COGNITO_USER_POOL_ID", ""),
 		CognitoAppClientID:     getEnv("COGNITO_CLIENT_ID", ""),
 		CognitoAppClientSecret: os.Getenv("COGNITO_CLIENT_SECRET"),
+
+		// WhatsApp Cloud API
+		WhatsAppPhoneNumberID:      os.Getenv("WHATSAPP_PHONE_NUMBER_ID"),
+		WhatsAppBusinessAccountID:  os.Getenv("WHATSAPP_BUSINESS_ACCOUNT_ID"),
+		WhatsAppAccessToken:        os.Getenv("WHATSAPP_ACCESS_TOKEN"),
+		WhatsAppAPIVersion:         getEnv("WHATSAPP_API_VERSION", "v26.0"),
+		WhatsAppWebhookVerifyToken: getEnv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", ""),
+		WhatsAppAppSecret:          os.Getenv("WHATSAPP_APP_SECRET"),
 	}
 
+	// Required configuration
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL belum diatur")
 	}

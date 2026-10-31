@@ -96,13 +96,37 @@ func main() {
 
 	log.Println("Cognito authentication and registration initialized")
 
+	// Initialize WhatsApp Cloud API client.
+	var whatsappClient *service.WhatsAppClient
+
+	if cfg.WhatsAppPhoneNumberID != "" &&
+		cfg.WhatsAppAccessToken != "" &&
+		cfg.WhatsAppAPIVersion != "" {
+
+		whatsappClient, err = service.NewWhatsAppClient(
+			cfg.WhatsAppPhoneNumberID,
+			cfg.WhatsAppAccessToken,
+			cfg.WhatsAppAPIVersion,
+		)
+		if err != nil {
+			log.Fatal("Gagal menginisialisasi WhatsApp client: ", err)
+		}
+
+		log.Println("WhatsApp Cloud API client initialized")
+	} else {
+		log.Println("WhatsApp Cloud API belum dikonfigurasi")
+	}
+
 	// Build HTTP router.
 	handler := router.New(router.Dependencies{
-		DB:                    db,
-		Redis:                 rdb,
-		AuthMiddleware:        authMiddleware,
-		CognitoProfileService: cognitoProfileService,
-		CognitoAuthService:    cognitoAuthService,
+		DB:                         db,
+		Redis:                      rdb,
+		AuthMiddleware:             authMiddleware,
+		CognitoProfileService:      cognitoProfileService,
+		CognitoAuthService:         cognitoAuthService,
+		WhatsAppClient:             whatsappClient,
+		WhatsAppWebhookVerifyToken: cfg.WhatsAppWebhookVerifyToken,
+		WhatsAppAppSecret:          cfg.WhatsAppAppSecret,
 	})
 
 	server := &http.Server{

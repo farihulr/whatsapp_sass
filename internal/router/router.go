@@ -16,15 +16,26 @@ import (
 )
 
 type Dependencies struct {
-	DB                    *gorm.DB
-	Redis                 *redis.Client
-	AuthMiddleware        *middleware.CognitoMiddleware
-	CognitoProfileService *service.CognitoProfileService
-	CognitoAuthService    *service.CognitoAuthService
+	DB                         *gorm.DB
+	Redis                      *redis.Client
+	AuthMiddleware             *middleware.CognitoMiddleware
+	CognitoProfileService      *service.CognitoProfileService
+	CognitoAuthService         *service.CognitoAuthService
+	WhatsAppClient             *service.WhatsAppClient
+	WhatsAppWebhookVerifyToken string
+	WhatsAppAppSecret          string
 }
 
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
+
+	// =====================================
+	// INITIALIZE WEBHOOK HANDLER
+	// =====================================
+
+	whatsappWebhookHandler := handlers.NewWhatsAppWebhookHandler(
+		deps.WhatsAppWebhookVerifyToken,
+	)
 
 	// =====================================
 	// HEALTH CHECK
@@ -85,6 +96,16 @@ func New(deps Dependencies) http.Handler {
 	})
 
 	// =====================================
+	// PUBLIC WHATSAPP WEBHOOK
+	// Tidak menggunakan Cognito.
+	// =====================================
+
+	mux.HandleFunc(
+		"GET /webhooks/whatsapp",
+		whatsappWebhookHandler.Verify,
+	)
+
+	// =====================================
 	// PUBLIC AUTHENTICATION ROUTES
 	// =====================================
 
@@ -109,6 +130,9 @@ func New(deps Dependencies) http.Handler {
 
 	invitationHandler := handlers.NewInvitationHandler(deps.DB)
 
+	whatsappService := service.NewWhatsAppService(deps.DB)
+	whatsappHandler := handlers.NewWhatsAppHandler(whatsappService)
+
 	// =====================================
 	// AUTH MIDDLEWARE CHECK
 	// =====================================
@@ -120,14 +144,11 @@ func New(deps Dependencies) http.Handler {
 			})
 		}
 
-		// User routes
 		mux.HandleFunc("GET /api/me", unavailable)
 
-		// Organization routes
 		mux.HandleFunc("POST /api/organizations", unavailable)
 		mux.HandleFunc("GET /api/organizations", unavailable)
 
-		// Invitation routes
 		mux.HandleFunc(
 			"POST /api/organizations/{organizationID}/invitations",
 			unavailable,
@@ -143,7 +164,6 @@ func New(deps Dependencies) http.Handler {
 			unavailable,
 		)
 
-		// Member routes
 		mux.HandleFunc(
 			"GET /api/organizations/{organizationID}/members",
 			unavailable,
@@ -161,6 +181,26 @@ func New(deps Dependencies) http.Handler {
 
 		mux.HandleFunc(
 			"DELETE /api/organizations/{organizationID}/members/{userID}",
+			unavailable,
+		)
+
+		mux.HandleFunc(
+			"POST /api/organizations/{organizationID}/whatsapp",
+			unavailable,
+		)
+
+		mux.HandleFunc(
+			"GET /api/organizations/{organizationID}/whatsapp",
+			unavailable,
+		)
+
+		mux.HandleFunc(
+			"DELETE /api/organizations/{organizationID}/whatsapp/{connectionID}",
+			unavailable,
+		)
+
+		mux.HandleFunc(
+			"POST /api/organizations/{organizationID}/whatsapp/messages",
 			unavailable,
 		)
 
@@ -223,7 +263,6 @@ func New(deps Dependencies) http.Handler {
 	// MEMBER ROUTES
 	// =====================================
 
-	// Melihat daftar anggota organisasi.
 	mux.Handle(
 		"GET /api/organizations/{organizationID}/members",
 		deps.AuthMiddleware.RequireAuth(
@@ -231,7 +270,6 @@ func New(deps Dependencies) http.Handler {
 		),
 	)
 
-	// Melihat detail anggota organisasi.
 	mux.Handle(
 		"GET /api/organizations/{organizationID}/members/{userID}",
 		deps.AuthMiddleware.RequireAuth(
@@ -239,7 +277,6 @@ func New(deps Dependencies) http.Handler {
 		),
 	)
 
-	// Mengubah role anggota organisasi.
 	mux.Handle(
 		"PATCH /api/organizations/{organizationID}/members/{userID}",
 		deps.AuthMiddleware.RequireAuth(
@@ -251,6 +288,58 @@ func New(deps Dependencies) http.Handler {
 		"DELETE /api/organizations/{organizationID}/members/{userID}",
 		deps.AuthMiddleware.RequireAuth(
 			http.HandlerFunc(memberHandler.Delete),
+		),
+	)
+
+	// =====================================
+	// WHATSAPP MESSAGE ROUTE
+	// =====================================
+
+	if deps.WhatsAppClient != nil {
+		whatsappMessageHandler := handlers.NewWhatsAppMessageHandler(
+			deps.DB,
+			deps.WhatsAppClient,
+		)
+
+		mux.Handle(
+			"POST /api/organizations/{organizationID}/whatsapp/messages",
+			deps.AuthMiddleware.RequireAuth(
+				http.HandlerFunc(whatsappMessageHandler.Send),
+			),
+		)
+	} else {
+		mux.HandleFunc(
+			"POST /api/organizations/{organizationID}/whatsapp/messages",
+			func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+					"error": "WhatsApp client belum tersedia",
+				})
+			},
+		)
+	}
+
+	// =====================================
+	// WHATSAPP CONNECTION ROUTES
+	// =====================================
+
+	mux.Handle(
+		"POST /api/organizations/{organizationID}/whatsapp",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(whatsappHandler.Create),
+		),
+	)
+
+	mux.Handle(
+		"GET /api/organizations/{organizationID}/whatsapp",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(whatsappHandler.List),
+		),
+	)
+
+	mux.Handle(
+		"DELETE /api/organizations/{organizationID}/whatsapp/{connectionID}",
+		deps.AuthMiddleware.RequireAuth(
+			http.HandlerFunc(whatsappHandler.Delete),
 		),
 	)
 
