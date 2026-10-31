@@ -34,7 +34,9 @@ func New(deps Dependencies) http.Handler {
 	// =====================================
 
 	whatsappWebhookHandler := handlers.NewWhatsAppWebhookHandler(
+		deps.DB,
 		deps.WhatsAppWebhookVerifyToken,
+		deps.WhatsAppAppSecret,
 	)
 
 	// =====================================
@@ -101,8 +103,8 @@ func New(deps Dependencies) http.Handler {
 	// =====================================
 
 	mux.HandleFunc(
-		"GET /webhooks/whatsapp",
-		whatsappWebhookHandler.Verify,
+		"POST /webhooks/whatsapp",
+		whatsappWebhookHandler.Receive,
 	)
 
 	// =====================================

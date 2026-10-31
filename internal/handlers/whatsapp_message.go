@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -170,7 +171,9 @@ func (h *WhatsAppMessageHandler) Send(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		writeWhatsAppJSON(w, http.StatusBadGateway, map[string]string{
+		log.Printf("WhatsApp send failed: %v", err)
+
+		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "gagal mengirim pesan melalui WhatsApp API",
 		})
 		return
